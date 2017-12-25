@@ -1,4 +1,4 @@
-package org.subhipstercollective.timely
+package org.subhipstercollective.ontime
 
 import android.os.Bundle
 import android.support.wearable.activity.WearableActivity

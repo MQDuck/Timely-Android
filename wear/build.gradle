@@ -7,7 +7,7 @@ apply plugin: 'kotlin-android-extensions'
 android {
     compileSdkVersion 26
     defaultConfig {
-        applicationId "org.subhipstercollective.timely"
+        applicationId "org.subhipstercollective.ontime"
         minSdkVersion 23
         targetSdkVersion 26
         versionCode 1
