@@ -38,7 +38,6 @@ import com.google.android.gms.maps.model.LatLng
 import kotlinx.android.synthetic.main.activity_main.*
 import org.jetbrains.anko.doAsync
 import org.jetbrains.anko.uiThread
-import org.json.JSONObject
 import java.net.URL
 import java.text.DateFormat
 import java.util.*
@@ -46,7 +45,7 @@ import java.util.*
 private const val CODE_REQUEST_PLACE_PICKER = 1
 private const val PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 2
 
-private const val MAX_ERROR = 0.01667
+private const val MAX_ERROR = 0.02
 
 val Location.latLng: LatLng get() = LatLng(latitude, longitude)
 
@@ -55,12 +54,12 @@ class ActivityMain : AppCompatActivity()
     private lateinit var mPlaceDetectionClient: PlaceDetectionClient
     private lateinit var mFusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var mGeoDataClient: GeoDataClient
-    private lateinit var mDateFormatter: DateFormat
-    private lateinit var mTimeFormatter: DateFormat
+    lateinit var mDateFormatter: DateFormat
+    lateinit var mTimeFormatter: DateFormat
     private var mLocationPermissionGranted = false
     private var mLastKnownLocation: Location? = null
     private var mDestination: Place? = null
-    private var mArrivalTime = Date()
+    var mArrivalTime = Calendar.getInstance()!!
 
     override fun onCreate(savedInstanceState: Bundle?)
     {
@@ -70,11 +69,13 @@ class ActivityMain : AppCompatActivity()
         mGeoDataClient = Places.getGeoDataClient(this, null)
         mPlaceDetectionClient = Places.getPlaceDetectionClient(this, null)
         mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+        mTimeFormatter = DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault())
         mDateFormatter = DateFormat.getDateInstance(DateFormat.DEFAULT, Locale.getDefault())
-        mTimeFormatter = DateFormat.getTimeInstance(DateFormat.DEFAULT, Locale.getDefault())
 
-        text_arrive_time.text = mTimeFormatter.format(mArrivalTime)
-        text_arrive_date.text = mDateFormatter.format(mArrivalTime)
+        mArrivalTime.set(Calendar.SECOND, 0)
+
+        setTextArriveTime()
+        setTextArriveDate()
 
         val builder = PlacePicker.IntentBuilder()
 
@@ -82,6 +83,9 @@ class ActivityMain : AppCompatActivity()
         getDeviceLocation()
 
         button_destination.setOnClickListener({ startActivityForResult(builder.build(this), CODE_REQUEST_PLACE_PICKER) })
+        button_time.setOnClickListener({ FragmentTimePicker().show(supportFragmentManager, "timePicker") })
+        button_day.setOnClickListener({ FragmentDatePicker().show(supportFragmentManager, "datePicker") })
+        button_departure.setOnClickListener({ findDeparture(mArrivalTime.time.time) })
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent)
@@ -92,10 +96,12 @@ class ActivityMain : AppCompatActivity()
             {
                 mDestination = PlacePicker.getPlace(this, data)
                 text_destination_name.text = mDestination?.name
-                findDeparture(1516037400)
             }
         }
     }
+
+    fun setTextArriveTime() { text_arrive_time.text = mTimeFormatter.format(mArrivalTime.time) }
+    fun setTextArriveDate() { text_arrive_date.text = mDateFormatter.format(mArrivalTime.time) }
 
     private fun getLocationPermission()
     {
@@ -149,39 +155,50 @@ class ActivityMain : AppCompatActivity()
 
     }
 
-    private fun findDeparture(arrival: Long, departure: Long = System.currentTimeMillis() / 1000)
+    private fun findDeparture(arrival: Long, departure: Long = System.currentTimeMillis())
     {
+        if(mDestination == null)
+        {
+            text_departure.text = "Please select a destination."
+            return
+        }
+        if(arrival < Date().time)
+        {
+            text_departure.text = "Arrival time must be in the future."
+            return
+        }
+
         val origin = mLastKnownLocation
         val destination = mDestination
         if(origin != null && destination != null)
         {
             doAsync {
-                var currentDirections: JSONObject
-                var currentDeparture = departure
+                var currentDirections: Directions
+                var currentDeparture = departure / 1000
+                val desiredArrival = arrival / 1000
                 do
                 {
                     currentDirections = queryDirections(origin.latLng, destination.latLng, currentDeparture)
-                    val currentDuration = duration(currentDirections)
+                    val currentDuration = currentDirections.duration
                     val currentArrival = currentDeparture + currentDuration
-                    val errorAbsolute = arrival - currentArrival
+                    val errorAbsolute = desiredArrival - currentArrival
                     val errorRelative = errorAbsolute.toDouble() / currentDuration.toDouble()
                     currentDeparture += errorAbsolute
-                    //Log.d("foo", "error: " + errorAbsolute + "   " + errorRelative*100 + "%,   " + "duration: " + currentDuration)
+                    Log.d("foo", currentDirections.getString("url"))
                     Log.d("foo", String.format("error: %s  %.2f%%,  duration: %d",
                             errorAbsolute, errorRelative*100, currentDuration))
                 } while(Math.abs(errorRelative) > MAX_ERROR)
 
                 uiThread {
-                    Log.d("foo", currentDirections.getString("url"))
                     val departDate = Date(currentDeparture * 1000)
-                    val departStr = mDateFormatter.format(departDate) + " " + mTimeFormatter.format(departDate)
-                    text_hello.text = departStr
+                    text_departure.text = "Leave at " + mTimeFormatter.format(departDate) + " " +
+                            mDateFormatter.format(departDate)
                 }
             }
         }
     }
 
-    private fun queryDirections(origin: LatLng, destination: LatLng, time: Long): JSONObject
+    private fun queryDirections(origin: LatLng, destination: LatLng, time: Long): Directions
     {
         val url = "https://maps.googleapis.com/maps/api/directions/json?" +
                 "origin=" + origin.latitude + "," + origin.longitude + "&" +
@@ -189,15 +206,8 @@ class ActivityMain : AppCompatActivity()
                 "departure_time=" + time + "&" +
                 "alternatives=false" + "&" +
                 "key=AIzaSyDZQhWnsL-wuaG4yuFnA6U7Jx0gujhmPwc"
-        val directions = JSONObject(URL(url).readText())
+        val directions = Directions(URL(url).readText())
         directions.put("url", url) // only for testing purposes
         return directions
-    }
-
-    private fun duration(directions: JSONObject): Long
-    {
-        val route = directions.getJSONArray("routes")[0] as JSONObject
-        val leg = route.getJSONArray("legs")[0] as JSONObject
-        return leg.getJSONObject("duration_in_traffic").getLong("value")
     }
 }
