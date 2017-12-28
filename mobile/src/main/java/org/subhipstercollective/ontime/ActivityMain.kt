@@ -23,6 +23,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
+import android.os.Handler
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
@@ -38,7 +39,6 @@ import com.google.android.gms.maps.model.LatLng
 import kotlinx.android.synthetic.main.activity_main.*
 import org.jetbrains.anko.doAsync
 import org.jetbrains.anko.uiThread
-import java.net.URL
 import java.text.DateFormat
 import java.util.*
 
@@ -46,6 +46,9 @@ private const val CODE_REQUEST_PLACE_PICKER = 1
 private const val PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 2
 
 private const val MAX_ERROR = 0.02
+private const val WAIT_MINIMUM: Long = 90_000
+private const val WAIT_MAXIMUM: Long = 3_600_000
+private const val WATE_RATE = 0.15
 
 val Location.latLng: LatLng get() = LatLng(latitude, longitude)
 
@@ -60,6 +63,11 @@ class ActivityMain : AppCompatActivity()
     private var mLastKnownLocation: Location? = null
     private var mDestination: Place? = null
     var mArrivalTime = Calendar.getInstance()!!
+    var mProjectedDepartureTime = System.currentTimeMillis()
+    var mProjectedDirections: Directions? = null
+    private val mHandler = Handler()
+
+    private val runnableUpdateDeparture = Runnable { findDeparture(mArrivalTime.time.time, mProjectedDepartureTime) }
 
     override fun onCreate(savedInstanceState: Bundle?)
     {
@@ -85,7 +93,11 @@ class ActivityMain : AppCompatActivity()
         button_destination.setOnClickListener({ startActivityForResult(builder.build(this), CODE_REQUEST_PLACE_PICKER) })
         button_time.setOnClickListener({ FragmentTimePicker().show(supportFragmentManager, "timePicker") })
         button_day.setOnClickListener({ FragmentDatePicker().show(supportFragmentManager, "datePicker") })
-        button_departure.setOnClickListener({ findDeparture(mArrivalTime.time.time) })
+        button_departure.setOnClickListener({
+            mHandler.removeCallbacks(runnableUpdateDeparture)
+            mHandler.post(runnableUpdateDeparture)
+        })
+        button_stop.setOnClickListener({ mHandler.removeCallbacks(runnableUpdateDeparture) })
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent)
@@ -155,7 +167,7 @@ class ActivityMain : AppCompatActivity()
 
     }
 
-    private fun findDeparture(arrival: Long, departure: Long = System.currentTimeMillis())
+    private fun findDeparture(arrival: Long, departure: Long = mProjectedDepartureTime)
     {
         if(mDestination == null)
         {
@@ -172,13 +184,14 @@ class ActivityMain : AppCompatActivity()
         val destination = mDestination
         if(origin != null && destination != null)
         {
+            text_departure.text = "Finding projected arrival time..."
             doAsync {
                 var currentDirections: Directions
                 var currentDeparture = departure / 1000
                 val desiredArrival = arrival / 1000
                 do
                 {
-                    currentDirections = queryDirections(origin.latLng, destination.latLng, currentDeparture)
+                    currentDirections = Directions(origin.latLng, destination.latLng, currentDeparture)
                     val currentDuration = currentDirections.duration
                     val currentArrival = currentDeparture + currentDuration
                     val errorAbsolute = desiredArrival - currentArrival
@@ -190,24 +203,27 @@ class ActivityMain : AppCompatActivity()
                 } while(Math.abs(errorRelative) > MAX_ERROR)
 
                 uiThread {
-                    val departDate = Date(currentDeparture * 1000)
+                    mProjectedDepartureTime = currentDeparture * 1000
+                    mProjectedDirections = currentDirections
+                    val departDate = Date(mProjectedDepartureTime)
                     text_departure.text = "Leave at " + mTimeFormatter.format(departDate) + " " +
                             mDateFormatter.format(departDate)
+
+                    val wait = getWait()
+                    Log.d("foo", "waiting " + wait/1000 + " seconds")
+                    mHandler.postDelayed(runnableUpdateDeparture, wait)
                 }
             }
         }
     }
 
-    private fun queryDirections(origin: LatLng, destination: LatLng, time: Long): Directions
+    private fun getWait(departure: Long = mProjectedDepartureTime, now: Long = System.currentTimeMillis()): Long
     {
-        val url = "https://maps.googleapis.com/maps/api/directions/json?" +
-                "origin=" + origin.latitude + "," + origin.longitude + "&" +
-                "destination=" + destination.latitude + "," + destination.longitude + "&" +
-                "departure_time=" + time + "&" +
-                "alternatives=false" + "&" +
-                "key=AIzaSyDZQhWnsL-wuaG4yuFnA6U7Jx0gujhmPwc"
-        val directions = Directions(URL(url).readText())
-        directions.put("url", url) // only for testing purposes
-        return directions
+        val wait = ((departure - now) * WATE_RATE).toLong()
+        if(wait < WAIT_MINIMUM)
+            return WAIT_MINIMUM
+        if(wait > WAIT_MAXIMUM)
+            return WAIT_MAXIMUM
+        return wait
     }
 }

@@ -19,13 +19,26 @@
 
 package org.subhipstercollective.ontime
 
+import com.google.android.gms.maps.model.LatLng
 import org.json.JSONObject
+import java.net.URL
 
-/**
- * Created by mqduck on 12/28/17.
- */
-class Directions(string: String) : JSONObject(string)
+private fun constructUrl(origin: LatLng, destination: LatLng, time: Long) =
+        "https://maps.googleapis.com/maps/api/directions/json?" +
+        "origin=" + origin.latitude + "," + origin.longitude + "&" +
+        "destination=" + destination.latitude + "," + destination.longitude + "&" +
+        "departure_time=" + time + "&" +
+        "alternatives=false" + "&" +
+        "key=AIzaSyDZQhWnsL-wuaG4yuFnA6U7Jx0gujhmPwc"
+
+private fun constructAndReadUrl(origin: LatLng, destination: LatLng, time: Long) =
+        URL(constructUrl(origin, destination, time)).readText()
+
+class Directions(origin: LatLng, destination: LatLng, time: Long)
+    : JSONObject(constructAndReadUrl(origin, destination, time))
 {
+    init { put("url", constructUrl(origin, destination, time)) }
+
     val duration: Long get()
     {
         val route = getJSONArray("routes")[0] as JSONObject

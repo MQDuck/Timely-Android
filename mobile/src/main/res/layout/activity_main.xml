@@ -88,7 +88,7 @@
             android:id="@+id/button_departure"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Find departure time"/>
+            android:text="Find and track departure time"/>
 
         <TextView
             android:id="@+id/text_departure"
@@ -97,6 +97,17 @@
             android:textAlignment="center"
             android:textSize="22sp"
             tools:text="depature time"/>
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"/>
+
+        <Button
+            android:id="@+id/button_stop"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Stop tracking departure time"/>
 
     </LinearLayout>
 
