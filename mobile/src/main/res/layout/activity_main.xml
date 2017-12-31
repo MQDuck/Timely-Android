@@ -16,6 +16,52 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
+            <ToggleButton
+                android:id="@+id/toggle_use_current_location"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="0"
+                android:checked="true"
+                android:text="ToggleButton"/>
+
+            <TextView
+                android:id="@+id/text_use_current_location"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="0"
+                android:text="Use current location"
+                android:textSize="24sp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layout_origin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/button_origin"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="0"
+                android:text="      Origin      "/>
+
+            <TextView
+                android:id="@+id/text_origin"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="none selected"
+                android:textAlignment="center"
+                android:textSize="24sp"/>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
             <Button
                 android:id="@+id/button_destination"
                 android:layout_width="wrap_content"
@@ -24,7 +70,7 @@
                 android:text="Destination"/>
 
             <TextView
-                android:id="@+id/text_destination_name"
+                android:id="@+id/text_destination"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
