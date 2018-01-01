@@ -48,6 +48,7 @@ class FragmentTimePicker : DialogFragment(), TimePickerDialog.OnTimeSetListener
         // Do something with the time chosen by the user
         mArrivalTime.set(Calendar.HOUR_OF_DAY, hourOfDay)
         mArrivalTime.set(Calendar.MINUTE, minute)
-        (activity as ActivityMain).setTextArriveTime()
+        (activity as ActivityMain).saveArrivalDepartureTimes()
+        (activity as ActivityMain).updateUI()
     }
 }

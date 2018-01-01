@@ -48,6 +48,7 @@ class FragmentDatePicker : DialogFragment(), DatePickerDialog.OnDateSetListener
         mArrivalTime.set(Calendar.YEAR, year)
         mArrivalTime.set(Calendar.MONTH, month)
         mArrivalTime.set(Calendar.DAY_OF_MONTH, day)
-        (activity as ActivityMain).setTextArriveDate()
+        (activity as ActivityMain).saveArrivalDepartureTimes()
+        (activity as ActivityMain).updateUI()
     }
 }

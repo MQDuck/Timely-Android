@@ -27,7 +27,6 @@ import android.graphics.Color
 import android.location.Location
 import android.os.Bundle
 import android.os.Handler
-import android.os.PersistableBundle
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
@@ -52,9 +51,14 @@ private const val PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 3
 private const val REQUEST_CHECK_SETTINGS = 4
 
 //private const val KEY_TRACK_LOCATION = "org.subhipstercollective.ontime mTrackLocation"
-private const val KEY_LAST_DESTINATION_LATITUDE = "org.subhipstercollective.ontime last destination Latitude"
-private const val KEY_LAST_DESTINATION_LONGITUDE = "org.subhipstercollective.ontime last destination Longitude"
+private const val KEY_LAST_ORIGIN_LATITUDE = "org.subhipstercollective.ontime last origin latitude"
+private const val KEY_LAST_ORIGIN_LONGITUDE = "org.subhipstercollective.ontime last origin longitude"
+private const val KEY_LAST_ORIGIN_NAME = "org.subhipstercollective.ontime last origin name"
+private const val KEY_LAST_DESTINATION_LATITUDE = "org.subhipstercollective.ontime last destination latitude"
+private const val KEY_LAST_DESTINATION_LONGITUDE = "org.subhipstercollective.ontime last destination longitude"
 private const val KEY_LAST_DESTINATION_NAME = "org.subhipstercollective.ontime last destination name"
+private const val KEY_LAST_ARRIVAL_TIME = "org.subhipstercollective.ontime last arrival time"
+private const val KEY_LAST_DEPARTURE_TIME = "org.subhipstercollective.ontime last departure time"
 
 private const val MAX_ERROR = 0.02
 private const val WAIT_MINIMUM = 90_000L
@@ -83,6 +87,7 @@ class ActivityMain : AppCompatActivity()
     private var mOrigin: OnTimePlace? = null
     private var mDestination: OnTimePlace? = null
     private var mTrackLocation = false
+    private var mTrackDepartureTime = false
     var mArrivalTime = Calendar.getInstance()!!
     private var mProjectedDepartureTime = System.currentTimeMillis()
     private var mProjectedDirections: Directions? = null
@@ -114,26 +119,11 @@ class ActivityMain : AppCompatActivity()
         builderLocationSettingsRequest.addLocationRequest(mLocationRequest)
         mLocationSettingsRequest = builderLocationSettingsRequest.build()
 
-        text_use_current_location.isEnabled = toggle_use_current_location.isChecked
-        layout_origin.visibility = if(toggle_use_current_location.isChecked) View.GONE else View.VISIBLE
-
         val builderPlacePicker = PlacePicker.IntentBuilder()
 
         mArrivalTime.set(Calendar.SECOND, 0)
 
-        val destinationName = mPreferences.getString(KEY_LAST_DESTINATION_NAME, "")
-        if(destinationName.isNotEmpty())
-        {
-            val destinationLatitude = mPreferences.getFloat(KEY_LAST_DESTINATION_LATITUDE, 0F)
-            val destinationLongitude = mPreferences.getFloat(KEY_LAST_DESTINATION_LONGITUDE, 0F)
-            mDestination = OnTimePlace(
-                    LatLng(destinationLatitude.toDouble(), destinationLongitude.toDouble()),
-                    destinationName)
-            text_destination.text = destinationName
-        }
-
-        setTextArriveTime()
-        setTextArriveDate()
+        loadPreferences()
 
         getLocationPermission()
         getDeviceLocation()
@@ -143,7 +133,7 @@ class ActivityMain : AppCompatActivity()
             {
                 super.onLocationResult(locationResult);
 
-                mCurrentLocation = locationResult.getLastLocation();
+                mCurrentLocation = locationResult.lastLocation;
 
                 Log.d("foo", "location result")
             }
@@ -166,8 +156,20 @@ class ActivityMain : AppCompatActivity()
         toggle_use_current_location.setOnCheckedChangeListener(CompoundButton.OnCheckedChangeListener { buttonView, isChecked ->
             mUseCurrentLocation = isChecked
             text_use_current_location.isEnabled = isChecked
-            layout_origin.visibility = if(isChecked) View.GONE else View.VISIBLE
+            if(isChecked)
+            {
+                mOrigin = null
+                getDeviceLocation()
+                updateUI()
+            }
+            else
+            {
+                loadLastOrigin()
+                updateUI()
+            }
         })
+
+        updateUI()
     }
 
     override fun onResume()
@@ -181,25 +183,6 @@ class ActivityMain : AppCompatActivity()
         }
     }
 
-    override fun onSaveInstanceState(outState: Bundle, outPersistentState: PersistableBundle)
-    {
-        Log.d("foo", "onSaveInstanceState")
-
-        val destination = mDestination
-        if(destination != null)
-        {
-            val prefsEditor = mPreferences.edit()
-            prefsEditor.putFloat(KEY_LAST_DESTINATION_LATITUDE, destination.latLng.latitude.toFloat())
-            prefsEditor.putFloat(KEY_LAST_DESTINATION_LONGITUDE, destination.latLng.longitude.toFloat())
-            prefsEditor.putString(KEY_LAST_DESTINATION_NAME, destination.name)
-            prefsEditor.apply()
-        }
-
-        //outState.putBoolean(KEY_TRACK_LOCATION, mTrackLocation)
-
-        super.onSaveInstanceState(outState, outPersistentState)
-    }
-
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?)
     {
         when(requestCode)
@@ -209,7 +192,8 @@ class ActivityMain : AppCompatActivity()
                 if(data != null)
                 {
                     mOrigin = OnTimePlace(PlacePicker.getPlace(this, data))
-                    text_origin.text = mOrigin?.name
+                    saveOrigin()
+                    updateUI()
                 }
             }
             REQUEST_PLACE_PICKER_DESTINATION ->
@@ -217,10 +201,105 @@ class ActivityMain : AppCompatActivity()
                 if(data != null)
                 {
                     mDestination = OnTimePlace(PlacePicker.getPlace(this, data))
-                    text_destination.text = mDestination?.name
+                    saveDestination()
+                    updateUI()
                 }
             }
         }
+    }
+
+    private fun loadPreferences()
+    {
+        loadLastOrigin()
+        loadLastDestination()
+        loadLastArrivalDepartureTimes()
+    }
+
+    private fun saveOrigin()
+    {
+        val origin = mOrigin
+        if(origin != null)
+        {
+            val prefsEditor = mPreferences.edit()
+            prefsEditor.putFloat(KEY_LAST_ORIGIN_LATITUDE, origin.latLng.latitude.toFloat())
+            prefsEditor.putFloat(KEY_LAST_ORIGIN_LONGITUDE, origin.latLng.longitude.toFloat())
+            prefsEditor.putString(KEY_LAST_ORIGIN_NAME, origin.name)
+            prefsEditor.apply()
+        }
+    }
+
+    private fun loadLastOrigin()
+    {
+        if(mPreferences.contains(KEY_LAST_ORIGIN_NAME))
+        {
+            val originLatitude = mPreferences.getFloat(KEY_LAST_ORIGIN_LATITUDE, 0F)
+            val originLongitude = mPreferences.getFloat(KEY_LAST_ORIGIN_LONGITUDE, 0F)
+            val originName = mPreferences.getString(KEY_LAST_ORIGIN_NAME, "")
+            mOrigin = OnTimePlace(
+                    LatLng(originLatitude.toDouble(), originLongitude.toDouble()),
+                    originName)
+        }
+    }
+
+    private fun saveDestination()
+    {
+        val destination = mDestination
+        if(destination != null)
+        {
+            val prefsEditor = mPreferences.edit()
+            prefsEditor.putFloat(KEY_LAST_DESTINATION_LATITUDE, destination.latLng.latitude.toFloat())
+            prefsEditor.putFloat(KEY_LAST_DESTINATION_LONGITUDE, destination.latLng.longitude.toFloat())
+            prefsEditor.putString(KEY_LAST_DESTINATION_NAME, destination.name)
+            prefsEditor.apply()
+        }
+    }
+
+    private fun loadLastDestination()
+    {
+        if(mPreferences.contains(KEY_LAST_DESTINATION_NAME))
+        {
+            val destinationLatitude = mPreferences.getFloat(KEY_LAST_DESTINATION_LATITUDE, 0F)
+            val destinationLongitude = mPreferences.getFloat(KEY_LAST_DESTINATION_LONGITUDE, 0F)
+            val destinationName = mPreferences.getString(KEY_LAST_DESTINATION_NAME, "")
+            mDestination = OnTimePlace(
+                    LatLng(destinationLatitude.toDouble(), destinationLongitude.toDouble()),
+                    destinationName)
+        }
+    }
+
+    fun saveArrivalDepartureTimes()
+    {
+        val prefsEditor = mPreferences.edit()
+        prefsEditor.putLong(KEY_LAST_ARRIVAL_TIME, mArrivalTime.time.time)
+        prefsEditor.putLong(KEY_LAST_DEPARTURE_TIME, mProjectedDepartureTime)
+        prefsEditor.apply()
+    }
+
+    private fun loadLastArrivalDepartureTimes()
+    {
+        if(mPreferences.contains(KEY_LAST_ARRIVAL_TIME))
+        {
+            val arrival = mPreferences.getLong(KEY_LAST_ARRIVAL_TIME, 0L)
+            if(arrival > mArrivalTime.time.time)
+            {
+                mArrivalTime.timeInMillis = arrival
+                mProjectedDepartureTime = mPreferences.getLong(KEY_LAST_DEPARTURE_TIME, 0L)
+            }
+            updateUI()
+        }
+    }
+
+    fun updateUI()
+    {
+        text_origin.text = mOrigin?.name
+        text_destination.text = mDestination?.name
+        text_arrive_time.text = mTimeFormatter.format(mArrivalTime.time)
+        text_arrive_date.text = mDateFormatter.format(mArrivalTime.time)
+
+        text_use_current_location.isEnabled = toggle_use_current_location.isChecked
+        layout_origin.visibility = if(toggle_use_current_location.isChecked) View.GONE else View.VISIBLE
+
+        //if(mHandler.c)
     }
 
     private fun startLocationUpdates()
@@ -281,9 +360,6 @@ class ActivityMain : AppCompatActivity()
     {
         mFusedLocationClient.removeLocationUpdates(mLocationCallback)
     }
-
-    fun setTextArriveTime() { text_arrive_time.text = mTimeFormatter.format(mArrivalTime.time) }
-    fun setTextArriveDate() { text_arrive_date.text = mDateFormatter.format(mArrivalTime.time) }
 
     private fun getLocationPermission()
     {
@@ -397,6 +473,7 @@ class ActivityMain : AppCompatActivity()
             startLocationUpdates()
 
         text_departure.text = "Projecting departure time..."
+        text_log.text = ""
         doAsync {
             var projectedDirections: Directions? = null
             var projectedDeparture = departure
@@ -424,9 +501,12 @@ class ActivityMain : AppCompatActivity()
                 val errorRelative = errorAbsolute.toDouble() / projectedDuration.toDouble()
                 projectedDeparture += errorAbsolute
                 --requests
+
+                val logMessage = String.format("error: %ss  %.2f%%,  duration: %dmin",
+                        errorAbsolute, errorRelative*100, projectedDuration/60)
+                uiThread { text_log.text = text_log.text.toString() + "\n" + logMessage }
                 Log.d("foo", projectedDirections.getString("url"))
-                Log.d("foo", String.format("error: %s  %.2f%%,  duration: %d",
-                        errorAbsolute, errorRelative*100, projectedDuration))
+                Log.d("foo", logMessage)
             } while(Math.abs(errorRelative) > MAX_ERROR && requests > 0)
 
             uiThread {
@@ -434,13 +514,16 @@ class ActivityMain : AppCompatActivity()
                 mProjectedDirections = projectedDirections
                 val departDate = Date(mProjectedDepartureTime)
 
+                val wait = getWait()
+
                 if(mProjectedDepartureTime < System.currentTimeMillis())
                     text_departure.setTextColor(Color.RED)
+                val logMessage = "waiting " + Math.round(wait/60_000.0) + "min"
                 text_departure.text = "Leave at " + mTimeFormatter.format(departDate) + " " +
                         mDateFormatter.format(departDate)
+                text_log.text = text_log.text.toString() + "\n" + logMessage
+                Log.d("foo", logMessage)
 
-                val wait = getWait()
-                Log.d("foo", "waiting " + Math.round(wait/1000.0) + " seconds")
                 mHandler.postDelayed(runnableUpdateDeparture, wait)
             }
         }
